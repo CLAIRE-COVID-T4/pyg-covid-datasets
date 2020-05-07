@@ -22,7 +22,7 @@ This dataset provides
  
 ### Basic usage
 
-```jupyterpython
+```python
 In[1]: from covid import DrugRepurposing
 In[2]: dr = DrugRepurposing(root='./data/DR/', virus='SARS-CoV-2')
 Downloading https://www.drugbank.ca/releases/5-1-5/downloads/all-open-structures
@@ -70,7 +70,7 @@ This class provides a set datasets for classification and unsupervised tasks. Th
 
 ### Basic usage
 
-```jupyterpython
+```python
 In[1]: from covid import SARSCoV
 In[2]: ds = SARSCoV(root='./data/', name='Mpro')
 Downloading https://github.com/yangkevin2/coronavirus_data/raw/master/data/mpro_xchem.csv
@@ -88,7 +88,7 @@ This dataset provides a set of molecules for the [Pseudomonas Aeruginosa Open-Ta
 
 ### Basic usage
 
-```jupyterpython
+```python
 In[1]: from covid import Pseudomonas
 In[2]: ds = Pseudomonas(root='./data/', url='https://<...>.zip')
 Downloading https://<...>.zip
