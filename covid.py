@@ -3,7 +3,6 @@ import torch
 import zipfile
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from rdkit import Chem
 from rdkit.Chem import PandasTools
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
@@ -444,16 +443,14 @@ class SARSCoV(InMemoryDataset):
         df = pd.read_csv(self.raw_paths[0])
         data_list = []
 
-        for row in tqdm(df.itertuples(False, None), total=len(df)):
-            data = Data(self._process_row(*row))
+        for row in df.itertuples(False, None):
+            data = self._process_row(*row)
 
             if self.pre_transform is not None:
                 data = self.pre_transform(data)
 
             if self.pre_filter is None or self.pre_filter(data):
                 data_list.append(data)
-
-            data_list.append(data)
 
         self.data, self.slices = self.collate(data_list)
         torch.save((self.data, self.slices), self.processed_paths[0])
@@ -538,9 +535,9 @@ class Pseudomonas(InMemoryDataset):
             df = pd.read_csv(os.path.join(dir_path, split + '.csv')).drop('id', axis=1, errors='ignore').dropna(1)
             data_lists[split] = []
 
-            for row in tqdm(df.itertuples(False, None), total=len(df)):
+            for row in df.itertuples(False, None):
                 smiles_idx.setdefault(row[0], len(smiles_idx))
-                data = Data(self._process_row(*row))
+                data = self._process_row(*row)
 
                 if self.pre_transform is not None:
                     data = self.pre_transform(data)
@@ -571,7 +568,7 @@ class Pseudomonas(InMemoryDataset):
     def _process_row(self, smiles, label=None):
         mol = Chem.MolFromSmiles(smiles)
 
-        if self.attr_extractor is None:
+        if self.feature_extractor is None:
             adj = Chem.GetAdjacencyMatrix(mol)
             features = {
                 'num_nodes': adj.shape[0],
