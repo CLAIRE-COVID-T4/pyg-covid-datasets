@@ -1,6 +1,5 @@
 import os
 import torch
-import zipfile
 import numpy as np
 import pandas as pd
 from rdkit import Chem
@@ -78,18 +77,7 @@ class DrugRepurposing(InMemoryDataset):
             final dataset. (default: :obj:`None`)
     """
 
-    urls = {
-        'drug-structures.sdf': 'https://www.drugbank.ca/releases/5-1-5/'
-                               'downloads/all-open-structures',
-        'drug-host.xlsx': 'https://static-content.springer.com/esm/'
-                          'art%3A10.1038%2Fs41467-019-09186-x/MediaObjects/'
-                          '41467_2019_9186_MOESM4_ESM.xlsx',
-        'host-host.xlsx': 'https://static-content.springer.com/esm/'
-                          'art%3A10.1038%2Fs41467-019-09186-x/MediaObjects/'
-                          '41467_2019_9186_MOESM3_ESM.xlsx',
-        'organisms.zip': 'https://downloads.thebiogrid.org/Download/BioGRID/'
-                         'Latest-Release/BIOGRID-ORGANISM-LATEST.tab3.zip'
-    }
+    base_url = "https://raw.githubusercontent.com/CLAIRE-COVID-T4/covid-data/master/data/"
 
     # Note: Some viruses have multiple aliases (e.g., 'HIV' and 'HIV-1')
     virus_aliases = {
@@ -141,11 +129,12 @@ class DrugRepurposing(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return ['drug-structures.sdf', 'drug-host.xlsx', 'host-host.xlsx', 'organisms.zip']
+        return ['drug-structures.sdf', 'drug-host.tab', 'protein-protein.tab', f'{self.virus}.tab']
 
     @property
     def processed_file_names(self):
-        return ['drug-structures.pt', 'drug-host.pt', 'host-host.pt', 'virus-host.pt', 'virus-virus.pt', 'id_maps.pt']
+        return ['drug-structures.pt', 'drug-host.pt', 'host-host.pt',
+                'virus-host.pt', 'virus-virus.pt', 'id_maps.pt']
 
     @property
     def processed_dir(self):
@@ -153,33 +142,20 @@ class DrugRepurposing(InMemoryDataset):
         return os.path.join(self.root, 'processed', self.virus, sub_dir)
 
     def download(self):
-        for name, url in self.urls.items():
-            path = download_url(url, self.raw_dir)
+        for name in self.raw_file_names[:-1]:
+            download_url(self.base_url + name, self.raw_dir)
 
-            if name == 'drug-structures.sdf':
-                extract_zip(path, self.raw_dir)
-                path = os.path.join(self.raw_dir, 'open structures.sdf')
-
-            os.rename(path, os.path.join(self.raw_dir, name))
+        download_url(self.base_url + 'virus-host/' + self.raw_file_names[-1], self.raw_dir)
 
     def process(self):
         # Host-Host
-        hh = pd.read_excel(self.raw_paths[2], usecols=[0, 1]).values.T
+        hh = pd.read_table(self.raw_paths[2]).values.T
 
         # Virus-Virus
-        vv = None
-
-        with zipfile.ZipFile(self.raw_paths[3], 'r') as f:
-            for name in f.namelist():
-                if self.virus in name:
-                    vv = pd.read_table(f.open(name), usecols=[
-                        'Entrez Gene Interactor A', 'Entrez Gene Interactor B',
-                        'Organism ID Interactor A', 'Organism ID Interactor B'
-                    ], na_values='-').fillna(-1).convert_dtypes(int).values
-                    break
-
-        if vv is None:
-            raise FileNotFoundError(f'No virus named "{self.virus}" found.')
+        vv = pd.read_table(self.raw_paths[3], usecols=[
+            'EntrezGeneID_InteractorA', 'EntrezGeneID_InteractorB',
+            'OrganismID_InteractorA', 'OrganismID_InteractorB'
+        ], na_values='-').fillna(-1).convert_dtypes(int).values
 
         human_only = np.all(vv[:, 2:] == 9606, axis=-1)  # Homo Sapiens
 
@@ -222,17 +198,17 @@ class DrugRepurposing(InMemoryDataset):
             entrez_ids = entrez_ids[mask]
 
         # Drug Structures
-        drugs = PandasTools.LoadSDF(self.raw_paths[0])[['DRUGBANK_ID', 'ROMol']]
+        drugs = PandasTools.LoadSDF(self.raw_paths[0], idName='RowID')[['RowID', 'ROMol']]
         drugs.iloc[:, 0] = drugs.iloc[:, 0].apply(lambda did: int(did[2:]))
-        drugs = drugs.set_index('DRUGBANK_ID')
+        drugs = drugs.set_index('RowID')
 
         # Drugs-Host
-        dh = pd.read_excel(self.raw_paths[1], converters={
-            'DrugID (DrugBank ID)': lambda did: int(did[2:]),
-            'Drug_Target (Gene Eentrez IDs)': lambda pid: int(pid2pos.get(pid, -1))
+        dh = pd.read_table(self.raw_paths[1], converters={
+            '#DrugBankID': lambda did: int(did[2:]),
+            'EntrezGeneID': lambda pid: int(pid2pos.get(int(pid), -1))
         })
 
-        dh = dh[dh.iloc[:, 1] != -1].join(drugs[[]], on='DrugID (DrugBank ID)', how='inner').values.T
+        dh = dh[dh.iloc[:, 1] != -1].join(drugs[[]], on='#DrugBankID', how='inner').values.T
         drug_ids, dh[0] = np.unique(dh[0], return_inverse=True)
         drugs = drugs.loc[drug_ids, 'ROMol']
 
